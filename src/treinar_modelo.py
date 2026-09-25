@@ -3,14 +3,21 @@ Treina um modelo de regressão para prever a nota final dos alunos e avalia
 seu desempenho com métricas estatísticas: média e desvio padrão dos erros,
 e o intervalo de erro (IC 95%) das previsões.
 
-Os gráficos de análise são impressos diretamente no terminal (ASCII),
-sem gerar arquivos de imagem.
+Os gráficos são gerados com matplotlib (backend Agg, em memória) e depois
+renderizados como arte ASCII diretamente no terminal — sem salvar nenhum
+arquivo de imagem em disco.
 """
 
+import io
 import os
 
+import matplotlib
+
+matplotlib.use("Agg")  # renderiza em memória, sem abrir janela nem salvar arquivo
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from PIL import Image
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
@@ -23,6 +30,9 @@ FEATURES = ["horas_estudo", "frequencia", "atividades_entregues", "nota_anterior
 TARGET = "nota_final"
 
 OUT_DIR = "outputs"
+
+# Rampa de caracteres do mais escuro (denso) ao mais claro (vazio)
+RAMPA_ASCII = "@%#*+=-:. "
 
 
 def preparar_dados():
@@ -74,49 +84,60 @@ def avaliar_modelo(nome, modelo, X_test, y_test):
     }
 
 
-def barra(valor, valor_max, largura=40):
-    """Desenha uma barra ASCII proporcional a valor/valor_max."""
-    n = int(round(largura * valor / valor_max)) if valor_max else 0
-    n = max(0, min(largura, n))
-    return "#" * n
+def figura_para_ascii(fig, largura=100):
+    """Renderiza uma figura matplotlib em memória (PNG) e converte para ASCII art."""
+    buffer = io.BytesIO()
+    fig.savefig(buffer, format="png", dpi=110)
+    plt.close(fig)
+    buffer.seek(0)
+
+    img = Image.open(buffer).convert("L")  # escala de cinza
+    largura_original, altura_original = img.size
+    # caracteres de terminal são ~2x mais altos que largos: compensa a proporção
+    altura = int(largura * (altura_original / largura_original) * 0.5)
+    img = img.resize((largura, max(1, altura)))
+
+    pixels = np.array(img)
+    indices = (pixels / 255 * (len(RAMPA_ASCII) - 1)).astype(int)
+
+    linhas = ["".join(RAMPA_ASCII[i] for i in linha) for linha in indices]
+    return "\n".join(linhas)
 
 
 def grafico_real_vs_previsto(y_test, y_pred):
-    print("\n--- Nota real vs. Nota prevista (amostra de 20 alunos) ---")
-    idx = np.linspace(0, len(y_test) - 1, min(20, len(y_test))).astype(int)
-    y_test_arr = np.array(y_test)
-    largura = 30
-    for i in idx:
-        real = y_test_arr[i]
-        prev = y_pred[i]
-        linha = list(" " * (largura + 1))
-        pos_real = min(largura, max(0, round(real / 10 * largura)))
-        pos_prev = min(largura, max(0, round(prev / 10 * largura)))
-        linha[pos_real] = "R"
-        linha[pos_prev] = "P" if pos_prev != pos_real else "X"
-        print(f"{real:4.1f} |{''.join(linha)}| previsto {prev:4.1f}")
-    print("      (R = nota real, P = nota prevista, X = coincidem)")
+    print("\n--- Nota real vs. Nota prevista ---")
+    fig, ax = plt.subplots(figsize=(6, 6))
+    ax.scatter(y_test, y_pred, alpha=0.7, color="black", edgecolor="black")
+    lim = [0, 10]
+    ax.plot(lim, lim, "--", color="black", linewidth=1)
+    ax.set_xlabel("Nota real")
+    ax.set_ylabel("Nota prevista")
+    ax.set_title("Nota real vs. Nota prevista")
+    fig.tight_layout()
+    print(figura_para_ascii(fig))
 
 
 def grafico_distribuicao_erros(erros, media_erro):
-    print("\n--- Distribuição dos erros de previsão (histograma) ---")
-    n_bins = 10
-    minimo, maximo = erros.min(), erros.max()
-    bins = np.linspace(minimo, maximo, n_bins + 1)
-    contagem, _ = np.histogram(erros, bins=bins)
-    max_contagem = contagem.max() if contagem.max() > 0 else 1
-    for i in range(n_bins):
-        faixa = f"[{bins[i]:5.2f}, {bins[i + 1]:5.2f})"
-        print(f"{faixa} | {barra(contagem[i], max_contagem)} {contagem[i]}")
-    print(f"Média do erro marcada em: {media_erro:.3f}")
+    print("\n--- Distribuição dos erros de previsão ---")
+    fig, ax = plt.subplots(figsize=(6, 4))
+    ax.hist(erros, bins=20, color="black", edgecolor="white")
+    ax.axvline(media_erro, color="black", linestyle="--", linewidth=1)
+    ax.set_xlabel("Erro (real - previsto)")
+    ax.set_ylabel("Frequência")
+    ax.set_title("Distribuição dos erros de previsão")
+    fig.tight_layout()
+    print(figura_para_ascii(fig))
 
 
 def grafico_correlacao(df):
     print("\n--- Correlação de cada variável com a nota final ---")
     corr = df[FEATURES + [TARGET]].corr()[TARGET].drop(TARGET)
-    for variavel, valor in corr.items():
-        sinal = "+" if valor >= 0 else "-"
-        print(f"{variavel:22s} {sinal}{abs(valor):.2f} {barra(abs(valor), 1.0, 30)}")
+    fig, ax = plt.subplots(figsize=(6, 4))
+    ax.barh(corr.index, corr.values, color="black")
+    ax.set_xlabel("Correlação com a nota final")
+    ax.set_title("Correlação das variáveis com a nota final")
+    fig.tight_layout()
+    print(figura_para_ascii(fig))
 
 
 def gerar_graficos(df, y_test, resultado):

@@ -3,12 +3,12 @@ Treina um modelo de regressão para prever a nota final dos alunos e avalia
 seu desempenho com métricas estatísticas: média e desvio padrão dos erros,
 e o intervalo de erro (IC 95%) das previsões.
 
-Gera também os gráficos de análise em outputs/graficos/.
+Os gráficos de análise são impressos diretamente no terminal (ASCII),
+sem gerar arquivos de imagem.
 """
 
 import os
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
@@ -23,7 +23,6 @@ FEATURES = ["horas_estudo", "frequencia", "atividades_entregues", "nota_anterior
 TARGET = "nota_final"
 
 OUT_DIR = "outputs"
-GRAF_DIR = os.path.join(OUT_DIR, "graficos")
 
 
 def preparar_dados():
@@ -75,63 +74,55 @@ def avaliar_modelo(nome, modelo, X_test, y_test):
     }
 
 
+def barra(valor, valor_max, largura=40):
+    """Desenha uma barra ASCII proporcional a valor/valor_max."""
+    n = int(round(largura * valor / valor_max)) if valor_max else 0
+    n = max(0, min(largura, n))
+    return "#" * n
+
+
+def grafico_real_vs_previsto(y_test, y_pred):
+    print("\n--- Nota real vs. Nota prevista (amostra de 20 alunos) ---")
+    idx = np.linspace(0, len(y_test) - 1, min(20, len(y_test))).astype(int)
+    y_test_arr = np.array(y_test)
+    largura = 30
+    for i in idx:
+        real = y_test_arr[i]
+        prev = y_pred[i]
+        linha = list(" " * (largura + 1))
+        pos_real = min(largura, max(0, round(real / 10 * largura)))
+        pos_prev = min(largura, max(0, round(prev / 10 * largura)))
+        linha[pos_real] = "R"
+        linha[pos_prev] = "P" if pos_prev != pos_real else "X"
+        print(f"{real:4.1f} |{''.join(linha)}| previsto {prev:4.1f}")
+    print("      (R = nota real, P = nota prevista, X = coincidem)")
+
+
+def grafico_distribuicao_erros(erros, media_erro):
+    print("\n--- Distribuição dos erros de previsão (histograma) ---")
+    n_bins = 10
+    minimo, maximo = erros.min(), erros.max()
+    bins = np.linspace(minimo, maximo, n_bins + 1)
+    contagem, _ = np.histogram(erros, bins=bins)
+    max_contagem = contagem.max() if contagem.max() > 0 else 1
+    for i in range(n_bins):
+        faixa = f"[{bins[i]:5.2f}, {bins[i + 1]:5.2f})"
+        print(f"{faixa} | {barra(contagem[i], max_contagem)} {contagem[i]}")
+    print(f"Média do erro marcada em: {media_erro:.3f}")
+
+
+def grafico_correlacao(df):
+    print("\n--- Correlação de cada variável com a nota final ---")
+    corr = df[FEATURES + [TARGET]].corr()[TARGET].drop(TARGET)
+    for variavel, valor in corr.items():
+        sinal = "+" if valor >= 0 else "-"
+        print(f"{variavel:22s} {sinal}{abs(valor):.2f} {barra(abs(valor), 1.0, 30)}")
+
+
 def gerar_graficos(df, y_test, resultado):
-    os.makedirs(GRAF_DIR, exist_ok=True)
-    y_pred = resultado["y_pred"]
-    erros = resultado["erros"]
-
-    # 1) Dispersão: nota real vs. nota prevista
-    plt.figure(figsize=(6, 6))
-    plt.scatter(y_test, y_pred, alpha=0.6, color="#2563eb", edgecolor="white")
-    lim = [0, 10]
-    plt.plot(lim, lim, "--", color="gray", label="Previsão perfeita")
-    plt.xlabel("Nota final real")
-    plt.ylabel("Nota final prevista")
-    plt.title("Nota real vs. Nota prevista")
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(os.path.join(GRAF_DIR, "real_vs_previsto.png"), dpi=150)
-    plt.close()
-
-    # 2) Histograma dos erros de previsão
-    plt.figure(figsize=(6, 4))
-    plt.hist(erros, bins=20, color="#2563eb", edgecolor="white")
-    plt.axvline(resultado["media_erro"], color="red", linestyle="--", label="Média do erro")
-    plt.xlabel("Erro (real - previsto)")
-    plt.ylabel("Frequência")
-    plt.title("Distribuição dos erros de previsão")
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(os.path.join(GRAF_DIR, "distribuicao_erros.png"), dpi=150)
-    plt.close()
-
-    # 3) Importância das variáveis (Random Forest)
-    if hasattr(resultado.get("modelo"), "feature_importances_"):
-        importancias = resultado["modelo"].feature_importances_
-        plt.figure(figsize=(6, 4))
-        plt.barh(FEATURES, importancias, color="#2563eb")
-        plt.xlabel("Importância relativa")
-        plt.title("Importância das variáveis no modelo")
-        plt.tight_layout()
-        plt.savefig(os.path.join(GRAF_DIR, "importancia_variaveis.png"), dpi=150)
-        plt.close()
-
-    # 4) Correlação entre variáveis
-    plt.figure(figsize=(6, 5))
-    corr = df[FEATURES + [TARGET]].corr()
-    im = plt.imshow(corr, cmap="Blues", vmin=-1, vmax=1)
-    plt.colorbar(im, label="Correlação")
-    plt.xticks(range(len(corr.columns)), corr.columns, rotation=45, ha="right")
-    plt.yticks(range(len(corr.columns)), corr.columns)
-    for i in range(len(corr.columns)):
-        for j in range(len(corr.columns)):
-            plt.text(j, i, f"{corr.iloc[i, j]:.2f}", ha="center", va="center", fontsize=8)
-    plt.title("Matriz de correlação")
-    plt.tight_layout()
-    plt.savefig(os.path.join(GRAF_DIR, "matriz_correlacao.png"), dpi=150)
-    plt.close()
-
-    print(f"\nGráficos salvos em {GRAF_DIR}/")
+    grafico_real_vs_previsto(np.array(y_test), resultado["y_pred"])
+    grafico_distribuicao_erros(resultado["erros"], resultado["media_erro"])
+    grafico_correlacao(df)
 
 
 def main():
@@ -168,7 +159,7 @@ def main():
             f.write(f"Intervalo de erro (95%): +/-{r['ic_95']:.3f}\n\n")
         f.write(f"Melhor modelo: {melhor['nome']} (R2 = {melhor['r2']:.3f})\n")
 
-    print(f"Resumo salvo em {OUT_DIR}/resumo_resultados.txt")
+    print(f"\nResumo salvo em {OUT_DIR}/resumo_resultados.txt")
 
 
 if __name__ == "__main__":

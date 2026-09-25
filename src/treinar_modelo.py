@@ -3,21 +3,14 @@ Treina um modelo de regressão para prever a nota final dos alunos e avalia
 seu desempenho com métricas estatísticas: média e desvio padrão dos erros,
 e o intervalo de erro (IC 95%) das previsões.
 
-Os gráficos são gerados com matplotlib (backend Agg, em memória) e depois
-renderizados como arte ASCII diretamente no terminal — sem salvar nenhum
-arquivo de imagem em disco.
+Gera também os gráficos de análise em outputs/graficos/.
 """
 
-import io
 import os
 
-import matplotlib
-
-matplotlib.use("Agg")  # renderiza em memória, sem abrir janela nem salvar arquivo
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from PIL import Image
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
@@ -30,9 +23,7 @@ FEATURES = ["horas_estudo", "frequencia", "atividades_entregues", "nota_anterior
 TARGET = "nota_final"
 
 OUT_DIR = "outputs"
-
-# Rampa de caracteres do mais escuro (denso) ao mais claro (vazio)
-RAMPA_ASCII = "@%#*+=-:. "
+GRAF_DIR = os.path.join(OUT_DIR, "graficos")
 
 
 def preparar_dados():
@@ -84,66 +75,63 @@ def avaliar_modelo(nome, modelo, X_test, y_test):
     }
 
 
-def figura_para_ascii(fig, largura=100):
-    """Renderiza uma figura matplotlib em memória (PNG) e converte para ASCII art."""
-    buffer = io.BytesIO()
-    fig.savefig(buffer, format="png", dpi=110)
-    plt.close(fig)
-    buffer.seek(0)
-
-    img = Image.open(buffer).convert("L")  # escala de cinza
-    largura_original, altura_original = img.size
-    # caracteres de terminal são ~2x mais altos que largos: compensa a proporção
-    altura = int(largura * (altura_original / largura_original) * 0.5)
-    img = img.resize((largura, max(1, altura)))
-
-    pixels = np.array(img)
-    indices = (pixels / 255 * (len(RAMPA_ASCII) - 1)).astype(int)
-
-    linhas = ["".join(RAMPA_ASCII[i] for i in linha) for linha in indices]
-    return "\n".join(linhas)
-
-
-def grafico_real_vs_previsto(y_test, y_pred):
-    print("\n--- Nota real vs. Nota prevista ---")
-    fig, ax = plt.subplots(figsize=(6, 6))
-    ax.scatter(y_test, y_pred, alpha=0.7, color="black", edgecolor="black")
-    lim = [0, 10]
-    ax.plot(lim, lim, "--", color="black", linewidth=1)
-    ax.set_xlabel("Nota real")
-    ax.set_ylabel("Nota prevista")
-    ax.set_title("Nota real vs. Nota prevista")
-    fig.tight_layout()
-    print(figura_para_ascii(fig))
-
-
-def grafico_distribuicao_erros(erros, media_erro):
-    print("\n--- Distribuição dos erros de previsão ---")
-    fig, ax = plt.subplots(figsize=(6, 4))
-    ax.hist(erros, bins=20, color="black", edgecolor="white")
-    ax.axvline(media_erro, color="black", linestyle="--", linewidth=1)
-    ax.set_xlabel("Erro (real - previsto)")
-    ax.set_ylabel("Frequência")
-    ax.set_title("Distribuição dos erros de previsão")
-    fig.tight_layout()
-    print(figura_para_ascii(fig))
-
-
-def grafico_correlacao(df):
-    print("\n--- Correlação de cada variável com a nota final ---")
-    corr = df[FEATURES + [TARGET]].corr()[TARGET].drop(TARGET)
-    fig, ax = plt.subplots(figsize=(6, 4))
-    ax.barh(corr.index, corr.values, color="black")
-    ax.set_xlabel("Correlação com a nota final")
-    ax.set_title("Correlação das variáveis com a nota final")
-    fig.tight_layout()
-    print(figura_para_ascii(fig))
-
-
 def gerar_graficos(df, y_test, resultado):
-    grafico_real_vs_previsto(np.array(y_test), resultado["y_pred"])
-    grafico_distribuicao_erros(resultado["erros"], resultado["media_erro"])
-    grafico_correlacao(df)
+    os.makedirs(GRAF_DIR, exist_ok=True)
+    y_pred = resultado["y_pred"]
+    erros = resultado["erros"]
+
+    # 1) Dispersão: nota real vs. nota prevista
+    plt.figure(figsize=(6, 6))
+    plt.scatter(y_test, y_pred, alpha=0.6, color="#2563eb", edgecolor="white")
+    lim = [0, 10]
+    plt.plot(lim, lim, "--", color="gray", label="Previsão perfeita")
+    plt.xlabel("Nota final real")
+    plt.ylabel("Nota final prevista")
+    plt.title("Nota real vs. Nota prevista")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(GRAF_DIR, "real_vs_previsto.png"), dpi=150)
+    plt.close()
+
+    # 2) Histograma dos erros de previsão
+    plt.figure(figsize=(6, 4))
+    plt.hist(erros, bins=20, color="#2563eb", edgecolor="white")
+    plt.axvline(resultado["media_erro"], color="red", linestyle="--", label="Média do erro")
+    plt.xlabel("Erro (real - previsto)")
+    plt.ylabel("Frequência")
+    plt.title("Distribuição dos erros de previsão")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(GRAF_DIR, "distribuicao_erros.png"), dpi=150)
+    plt.close()
+
+    # 3) Importância das variáveis (Random Forest)
+    if hasattr(resultado.get("modelo"), "feature_importances_"):
+        importancias = resultado["modelo"].feature_importances_
+        plt.figure(figsize=(6, 4))
+        plt.barh(FEATURES, importancias, color="#2563eb")
+        plt.xlabel("Importância relativa")
+        plt.title("Importância das variáveis no modelo")
+        plt.tight_layout()
+        plt.savefig(os.path.join(GRAF_DIR, "importancia_variaveis.png"), dpi=150)
+        plt.close()
+
+    # 4) Correlação entre variáveis
+    plt.figure(figsize=(6, 5))
+    corr = df[FEATURES + [TARGET]].corr()
+    im = plt.imshow(corr, cmap="Blues", vmin=-1, vmax=1)
+    plt.colorbar(im, label="Correlação")
+    plt.xticks(range(len(corr.columns)), corr.columns, rotation=45, ha="right")
+    plt.yticks(range(len(corr.columns)), corr.columns)
+    for i in range(len(corr.columns)):
+        for j in range(len(corr.columns)):
+            plt.text(j, i, f"{corr.iloc[i, j]:.2f}", ha="center", va="center", fontsize=8)
+    plt.title("Matriz de correlação")
+    plt.tight_layout()
+    plt.savefig(os.path.join(GRAF_DIR, "matriz_correlacao.png"), dpi=150)
+    plt.close()
+
+    print(f"\nGráficos salvos em {GRAF_DIR}/")
 
 
 def main():
@@ -180,7 +168,7 @@ def main():
             f.write(f"Intervalo de erro (95%): +/-{r['ic_95']:.3f}\n\n")
         f.write(f"Melhor modelo: {melhor['nome']} (R2 = {melhor['r2']:.3f})\n")
 
-    print(f"\nResumo salvo em {OUT_DIR}/resumo_resultados.txt")
+    print(f"Resumo salvo em {OUT_DIR}/resumo_resultados.txt")
 
 
 if __name__ == "__main__":

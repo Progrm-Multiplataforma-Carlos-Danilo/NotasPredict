@@ -1,17 +1,12 @@
-"""
-Treina um modelo de regressão para prever a nota final dos alunos e avalia
-seu desempenho com métricas estatísticas: média e desvio padrão dos erros,
-e o intervalo de erro (IC 95%) das previsões.
-
-Gera também os gráficos de análise em outputs/graficos/.
-"""
+# aqui a gente treina o modelo de regressao pra prever a nota final
+# e calcula as metricas pedidas: media do erro, desvio padrao e o intervalo de erro
+# tambem gera os graficos pra colocar no relatorio
 
 import os
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
@@ -27,6 +22,7 @@ GRAF_DIR = os.path.join(OUT_DIR, "graficos")
 
 
 def preparar_dados():
+    # se ja tiver o csv gerado a gente usa ele, senao gera na hora
     caminho_csv = "data/alunos.csv"
     if os.path.exists(caminho_csv):
         df = pd.read_csv(caminho_csv)
@@ -37,12 +33,20 @@ def preparar_dados():
 
     X = df[FEATURES]
     y = df[TARGET]
-    return df, train_test_split(X, y, test_size=0.25, random_state=SEED)
+
+    # separa treino e teste, 75/25 como o professor pediu
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.25, random_state=SEED
+    )
+
+    return df, X_train, X_test, y_train, y_test
 
 
-def avaliar_modelo(nome, modelo, X_test, y_test):
+def avaliar_modelo(modelo, X_test, y_test):
     y_pred = modelo.predict(X_test)
-    erros = y_test.values - y_pred  # erro = valor real - valor previsto
+
+    # erro de cada previsao (real menos previsto)
+    erros = y_test.values - y_pred
 
     mae = mean_absolute_error(y_test, y_pred)
     rmse = np.sqrt(mean_squared_error(y_test, y_pred))
@@ -51,19 +55,18 @@ def avaliar_modelo(nome, modelo, X_test, y_test):
     media_erro = erros.mean()
     desvio_erro = erros.std(ddof=1)
 
-    # Intervalo de erro (95%) assumindo distribuição aproximadamente normal dos erros
+    # intervalo de erro de 95%, usando a formula da normal (1.96 * desvio padrao)
+    # vi isso na aula de estatistica, da pra usar pq os erros parecem seguir uma normal
     ic_95 = 1.96 * desvio_erro
 
-    print(f"\n=== {nome} ===")
-    print(f"MAE  (erro absoluto médio): {mae:.3f}")
-    print(f"RMSE (raiz do erro quadrático médio): {rmse:.3f}")
-    print(f"R²   (coeficiente de determinação): {r2:.3f}")
-    print(f"Média do erro (viés): {media_erro:.3f}")
-    print(f"Desvio padrão do erro: {desvio_erro:.3f}")
-    print(f"Intervalo de erro (95%): ±{ic_95:.3f} pontos")
+    print(f"MAE: {mae:.3f}")
+    print(f"RMSE: {rmse:.3f}")
+    print(f"R2: {r2:.3f}")
+    print(f"media do erro: {media_erro:.3f}")
+    print(f"desvio padrao do erro: {desvio_erro:.3f}")
+    print(f"intervalo de erro (95%): +/- {ic_95:.3f} pontos")
 
     return {
-        "nome": nome,
         "y_pred": y_pred,
         "erros": erros,
         "mae": mae,
@@ -80,95 +83,73 @@ def gerar_graficos(df, y_test, resultado):
     y_pred = resultado["y_pred"]
     erros = resultado["erros"]
 
-    # 1) Dispersão: nota real vs. nota prevista
+    # grafico 1: nota real vs nota que o modelo previu
+    # quanto mais perto da linha pontilhada, melhor a previsao
     plt.figure(figsize=(6, 6))
     plt.scatter(y_test, y_pred, alpha=0.6, color="#2563eb", edgecolor="white")
-    lim = [0, 10]
-    plt.plot(lim, lim, "--", color="gray", label="Previsão perfeita")
-    plt.xlabel("Nota final real")
-    plt.ylabel("Nota final prevista")
-    plt.title("Nota real vs. Nota prevista")
+    plt.plot([0, 10], [0, 10], "--", color="gray", label="previsao perfeita")
+    plt.xlabel("nota final real")
+    plt.ylabel("nota final prevista")
+    plt.title("nota real vs nota prevista")
     plt.legend()
     plt.tight_layout()
     plt.savefig(os.path.join(GRAF_DIR, "real_vs_previsto.png"), dpi=150)
     plt.close()
 
-    # 2) Histograma dos erros de previsão
+    # grafico 2: histograma dos erros, pra ver se ta distribuido tipo uma normal
     plt.figure(figsize=(6, 4))
     plt.hist(erros, bins=20, color="#2563eb", edgecolor="white")
-    plt.axvline(resultado["media_erro"], color="red", linestyle="--", label="Média do erro")
-    plt.xlabel("Erro (real - previsto)")
-    plt.ylabel("Frequência")
-    plt.title("Distribuição dos erros de previsão")
+    plt.axvline(resultado["media_erro"], color="red", linestyle="--", label="media do erro")
+    plt.xlabel("erro (real - previsto)")
+    plt.ylabel("frequencia")
+    plt.title("distribuicao dos erros de previsao")
     plt.legend()
     plt.tight_layout()
     plt.savefig(os.path.join(GRAF_DIR, "distribuicao_erros.png"), dpi=150)
     plt.close()
 
-    # 3) Importância das variáveis (Random Forest)
-    if hasattr(resultado.get("modelo"), "feature_importances_"):
-        importancias = resultado["modelo"].feature_importances_
-        plt.figure(figsize=(6, 4))
-        plt.barh(FEATURES, importancias, color="#2563eb")
-        plt.xlabel("Importância relativa")
-        plt.title("Importância das variáveis no modelo")
-        plt.tight_layout()
-        plt.savefig(os.path.join(GRAF_DIR, "importancia_variaveis.png"), dpi=150)
-        plt.close()
-
-    # 4) Correlação entre variáveis
+    # grafico 3: correlacao entre as variaveis, so pra entender quais pesam mais
     plt.figure(figsize=(6, 5))
     corr = df[FEATURES + [TARGET]].corr()
     im = plt.imshow(corr, cmap="Blues", vmin=-1, vmax=1)
-    plt.colorbar(im, label="Correlação")
+    plt.colorbar(im, label="correlacao")
     plt.xticks(range(len(corr.columns)), corr.columns, rotation=45, ha="right")
     plt.yticks(range(len(corr.columns)), corr.columns)
     for i in range(len(corr.columns)):
         for j in range(len(corr.columns)):
             plt.text(j, i, f"{corr.iloc[i, j]:.2f}", ha="center", va="center", fontsize=8)
-    plt.title("Matriz de correlação")
+    plt.title("matriz de correlacao")
     plt.tight_layout()
     plt.savefig(os.path.join(GRAF_DIR, "matriz_correlacao.png"), dpi=150)
     plt.close()
 
-    print(f"\nGráficos salvos em {GRAF_DIR}/")
+    print(f"graficos salvos em {GRAF_DIR}/")
 
 
 def main():
-    df, (X_train, X_test, y_train, y_test) = preparar_dados()
+    df, X_train, X_test, y_train, y_test = preparar_dados()
 
-    # Modelo 1: Regressão Linear (baseline simples e interpretável)
-    modelo_linear = LinearRegression()
-    modelo_linear.fit(X_train, y_train)
-    resultado_linear = avaliar_modelo("Regressão Linear", modelo_linear, X_test, y_test)
-    resultado_linear["modelo"] = modelo_linear
+    # usando regressao linear, que foi o modelo que fez mais sentido pro problema
+    # (a nota final tem uma relacao mais ou menos linear com as variaveis)
+    modelo = LinearRegression()
+    modelo.fit(X_train, y_train)
 
-    # Modelo 2: Random Forest (captura relações não lineares)
-    modelo_rf = RandomForestRegressor(n_estimators=200, random_state=SEED)
-    modelo_rf.fit(X_train, y_train)
-    resultado_rf = avaliar_modelo("Random Forest", modelo_rf, X_test, y_test)
-    resultado_rf["modelo"] = modelo_rf
+    resultado = avaliar_modelo(modelo, X_test, y_test)
 
-    # Usa o melhor modelo (maior R²) para os gráficos finais
-    melhor = resultado_rf if resultado_rf["r2"] >= resultado_linear["r2"] else resultado_linear
-    print(f"\n>> Melhor modelo: {melhor['nome']} (R² = {melhor['r2']:.3f})")
+    gerar_graficos(df, y_test, resultado)
 
-    gerar_graficos(df, y_test, melhor)
-
-    # Salva um resumo em texto para consulta rápida / apoio ao relatório
+    # salva um resumo em txt pra usar no relatorio depois
     os.makedirs(OUT_DIR, exist_ok=True)
     with open(os.path.join(OUT_DIR, "resumo_resultados.txt"), "w", encoding="utf-8") as f:
-        for r in (resultado_linear, resultado_rf):
-            f.write(f"=== {r['nome']} ===\n")
-            f.write(f"MAE: {r['mae']:.3f}\n")
-            f.write(f"RMSE: {r['rmse']:.3f}\n")
-            f.write(f"R2: {r['r2']:.3f}\n")
-            f.write(f"Media do erro: {r['media_erro']:.3f}\n")
-            f.write(f"Desvio padrao do erro: {r['desvio_erro']:.3f}\n")
-            f.write(f"Intervalo de erro (95%): +/-{r['ic_95']:.3f}\n\n")
-        f.write(f"Melhor modelo: {melhor['nome']} (R2 = {melhor['r2']:.3f})\n")
+        f.write("=== Regressao Linear ===\n")
+        f.write(f"MAE: {resultado['mae']:.3f}\n")
+        f.write(f"RMSE: {resultado['rmse']:.3f}\n")
+        f.write(f"R2: {resultado['r2']:.3f}\n")
+        f.write(f"Media do erro: {resultado['media_erro']:.3f}\n")
+        f.write(f"Desvio padrao do erro: {resultado['desvio_erro']:.3f}\n")
+        f.write(f"Intervalo de erro (95%): +/-{resultado['ic_95']:.3f}\n")
 
-    print(f"Resumo salvo em {OUT_DIR}/resumo_resultados.txt")
+    print(f"resumo salvo em {OUT_DIR}/resumo_resultados.txt")
 
 
 if __name__ == "__main__":

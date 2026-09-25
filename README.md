@@ -4,13 +4,15 @@ Projeto acadêmico que gera uma base fake de alunos e treina um modelo de
 Machine Learning para prever a nota final com base em horas de estudo,
 frequência, atividades entregues e nota anterior. Também calcula média,
 desvio padrão e intervalo de erro das previsões, com os gráficos de análise
-impressos direto no terminal (ASCII).
+gerados via matplotlib e renderizados como arte ASCII direto no terminal
+(sem salvar arquivos de imagem).
 
 ## Stack
 
 - Python 3.12
 - pandas / numpy
 - scikit-learn (Regressão Linear e Random Forest)
+- matplotlib + Pillow (gráficos renderizados como ASCII no terminal)
 
 ## Como executar
 

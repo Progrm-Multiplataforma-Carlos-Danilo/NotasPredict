@@ -9,7 +9,7 @@ desvio padrão e intervalo de erro das previsões, e gera gráficos de análise.
 
 - Python 3.12
 - pandas / numpy
-- scikit-learn (Regressão Linear e Random Forest)
+- scikit-learn (Regressão Linear)
 - matplotlib
 
 ## Como executar

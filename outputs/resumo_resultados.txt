@@ -1,17 +1,7 @@
-=== Regressão Linear ===
+=== Regressao Linear ===
 MAE: 0.706
 RMSE: 0.831
 R2: 0.802
 Media do erro: 0.038
 Desvio padrao do erro: 0.834
 Intervalo de erro (95%): +/-1.635
-
-=== Random Forest ===
-MAE: 0.781
-RMSE: 0.959
-R2: 0.737
-Media do erro: 0.068
-Desvio padrao do erro: 0.962
-Intervalo de erro (95%): +/-1.885
-
-Melhor modelo: Regressão Linear (R2 = 0.802)
